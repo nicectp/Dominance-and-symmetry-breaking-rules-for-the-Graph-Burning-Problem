@@ -1,0 +1,152 @@
+#ifndef GB_PERTURBED_MODEL_HPP
+#define GB_PERTURBED_MODEL_HPP
+
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+#include <utility>
+#include <cmath>
+#include <iostream>
+
+#include <ilcplex/ilocplex.h>
+#include <lemon/list_graph.h>
+
+#include "../tools/reader.hpp"
+#include "../tools/others.hpp"
+
+#include "genericCallback.hpp"
+#include "legacyCallback.hpp"
+
+ILOSTLBEGIN
+
+class PerturbedModel {
+
+    private:
+
+    MyGenericCallback * callback_1; // To handle Cutoff callback
+    MyGenericCallback * callback_2; // To handle User cut callback
+    MyGenericCallback * callback_3; // To handle both
+
+    // --------------- //
+    //      CPLEX      //
+    // --------------- //
+    const IloEnv & env;
+    IloModel model;
+    IloCplex cplex;
+
+    // --------------------- //
+    //       Formulation     //
+    // --------------------- //
+    IloObjective obj;
+
+    // --------------- //
+    //      LEMON      //
+    // --------------- //
+    lemon::ListGraph g;
+    std::vector<lemon::ListGraph::Node> nodes;
+
+    // --------------------- //
+    //       Parameters      //
+    // --------------------- //
+    std::vector<IloInt> c;
+    IloInt UB;
+    IloInt UB_override; // To use the upper bound from heuristics
+
+    std::map<std::pair<int,int>, std::set<int>> allBalls;
+    std::map<int,int> lex_ord;
+
+    std::vector<std::tuple<int,int,int,int>> impls;
+
+    bool usePreprocessing;     // To add the preprocessing fixings to the model
+
+    bool useBranchingCallback; // To use the legacy branching callback
+    bool useCutOffCallback;    // To use the generic cutoff callback
+    bool useUserCutCallback;   // To use the generic callback to add user cuts
+
+    // -------------------- //
+    //       Variables      //
+    // -------------------- //
+    IloNumVar R;
+    IloArray<IloNumVarArray> x;
+
+    // Manage execution and control //
+	IloNum time;
+    IloNum ticks;
+
+    public:
+    
+    // --------------------- //
+    //      Constructors     //
+    // --------------------- //
+    PerturbedModel(IloEnv & env_, const std::string & filename, bool usePreprocessing_, bool useBranchingCallback_, bool useCutOffCallback_, bool useUserCutCallback_);  // constructor for literature instance, UB = ceil(sqrt(n))
+    PerturbedModel(IloEnv & env_, int n, bool usePreprocessing_, bool useBranchingCallback_, bool useCutOffCallback_, bool useUserCutCallback_);                         // constructor for path graph, UB = ceil(sqrt(n))
+
+    PerturbedModel(IloEnv & env_, const std::string & filename, bool usePreprocessing_, bool useBranchingCallback_, bool useCutOffCallback_, bool useUserCutCallback_, int ubOverride);  // constructor for literature instance,  UB = given upper bound
+    PerturbedModel(IloEnv & env_, int n, bool usePreprocessing_,  bool useBranchingCallback_, bool useCutOffCallback_, bool useUserCutCallback_, int ubOverride);                        // constructor for path graph, UB = given upper bound
+    
+    PerturbedModel() = delete;
+
+    // --------------------------------- //
+    //      Computing the parameters     //
+    // --------------------------------- //
+    void computeUB();
+    void computeCosts();
+    void computeBalls();
+    void computeLexOrder();
+
+    // --------------------- //
+    //      Formulation      //
+    // --------------------- //
+    void setVariables();
+    void setObjective();
+    void setConstraints();
+    void addPreprocessingFixings(); // Responsible for adding the preprocessing fixings
+
+    void setCplexParameters(); // Setting CPLEX parameters
+
+    // --------------- //
+    //      Solve     //
+    // --------------- //
+
+    // Solves the MIP
+    void run();
+    
+    // Displays the obtained solution
+    void printResult() const;
+
+    // ------- //
+    // Getters //
+    // ------- //
+
+    // Retrieves the objective value
+    double getObjValue() const;
+
+    // Retrieves CPLEX execution time
+    double getTime() const;
+
+    // Retrieves the deterministic time (ticks)
+    double getTicks() const;
+
+    // Retrieves the biggest radius used in the solution (i.e., R in the original model)
+    int getR() const;
+
+    // Retrieves the number of user cuts proposed by the user cut callback
+    int getUserCuts() const;
+
+    // Retrieves the number of cutoffs performed by the cutoff callback
+    int getCutOffs() const;
+
+    // Retrieves the number of nodes explored in the B&B tree
+    int getNodesExplored() const;
+
+    // ----------------- //
+    //     Destructor    //
+    // ----------------- //
+
+    // free dynamic allocated memory
+    ~PerturbedModel();
+};
+
+
+#endif
